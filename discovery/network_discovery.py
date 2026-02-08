@@ -2,6 +2,7 @@
 
 import logging
 import socket
+import ipaddress
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -87,8 +88,13 @@ class NetworkDiscovery:
             if not conn.laddr or not conn.raddr:
                 continue
             
-            # Skip loopback
-            if conn.raddr.ip.startswith("127."):
+            # Skip loopback and special addresses
+            raddr_ip = conn.raddr.ip
+            if not raddr_ip or raddr_ip in ("0.0.0.0", "::", "::1", "127.0.0.1", "localhost"):
+                continue
+            
+            # Skip IPv6 if not supported or if it's a loopback
+            if raddr_ip.startswith("127.") or raddr_ip.startswith("::"):
                 continue
             
             # Create unique connection key
@@ -109,8 +115,12 @@ class NetworkDiscovery:
             # Identify remote service type
             remote_service = self._identify_service(conn.raddr.port, conn.raddr.ip)
             
-            # Resolve hostname
-            remote_hostname = self._resolve_hostname(conn.raddr.ip)
+            # Resolve hostname (with error handling)
+            try:
+                remote_hostname = self._resolve_hostname(conn.raddr.ip)
+            except Exception as e:
+                logger.debug(f"Could not resolve hostname for {conn.raddr.ip}: {e}")
+                remote_hostname = conn.raddr.ip
             
             connection_info = {
                 "local_pid": conn.pid,
@@ -153,11 +163,38 @@ class NetworkDiscovery:
         if ip in self._hostname_cache:
             return self._hostname_cache[ip]
         
+        # Skip special addresses that can't be resolved
+        if not ip or ip in ("0.0.0.0", "::", "::1", "127.0.0.1", "localhost"):
+            self._hostname_cache[ip] = ip
+            return ip
+        
+        # Validate IP address format and handle IPv6
+        try:
+            parsed_ip = ipaddress.ip_address(ip)
+            
+            # Skip IPv6 addresses that might cause issues
+            if isinstance(parsed_ip, ipaddress.IPv6Address):
+                # For IPv6, check if it's a link-local, loopback, or multicast address
+                if parsed_ip.is_link_local or parsed_ip.is_loopback or parsed_ip.is_multicast:
+                    self._hostname_cache[ip] = ip
+                    return ip
+                # Skip IPv6 resolution if IPv6 is not properly configured (will be caught by OSError)
+        except ValueError:
+            # Not a valid IP address, return as-is
+            self._hostname_cache[ip] = ip
+            return ip
+        
         try:
             hostname = socket.gethostbyaddr(ip)[0]
             self._hostname_cache[ip] = hostname
             return hostname
-        except (socket.herror, socket.gaierror):
+        except (socket.herror, socket.gaierror, OSError, ValueError) as e:
+            # Handle all possible errors:
+            # - socket.herror: Host not found
+            # - socket.gaierror: Address-related error
+            # - OSError: Address family not supported (Errno 97) or other OS errors
+            # - ValueError: Invalid IP address format
+            logger.debug(f"Could not resolve hostname for {ip}: {e}")
             self._hostname_cache[ip] = ip
             return ip
     
