@@ -1,0 +1,3 @@
+"""
+Diagnostic tools (flare, etc.).
+"""

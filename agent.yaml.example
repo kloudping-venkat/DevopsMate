@@ -1,0 +1,81 @@
+# DevopsMate Universal Agent Configuration
+# Copy this file to agent.yaml and customize for your environment
+
+# Connection Settings
+endpoint: "http://localhost:8000/api/v1/ingest"
+api_key: "${DEVOPSMATE_API_KEY}"  # Set via environment variable
+tenant_id: "${DEVOPSMATE_TENANT_ID}"
+
+# Collection Settings
+collect_host_metrics: true
+collect_container_metrics: true
+collect_logs: true
+collect_network: true
+collect_traces: true
+
+# Collection Intervals (seconds)
+host_metrics_interval: 15
+container_metrics_interval: 15
+log_collection_interval: 5
+network_metrics_interval: 30
+discovery_interval: 60
+flush_interval: 10
+
+# Auto-Instrumentation
+auto_instrument: true
+instrument_java: true
+instrument_python: true
+instrument_nodejs: true
+instrument_dotnet: true
+instrument_go: true
+
+# Log Collection
+log_paths:
+  - "/var/log/*.log"
+  - "/var/log/**/*.log"
+  - "/var/log/containers/*.log"
+
+log_exclude_patterns:
+  - "*.gz"
+  - "*.tar"
+  - "*.zip"
+  - "*-json.log.*"
+
+# Process Discovery
+process_discovery_enabled: true
+process_exclude_patterns:
+  - "^\\[.*\\]$"  # Kernel threads
+
+# Container Settings
+docker_socket: "/var/run/docker.sock"
+containerd_socket: "/run/containerd/containerd.sock"
+kubernetes_enabled: true
+
+# Network Settings
+capture_network_flows: true
+network_sample_rate: 0.1  # 10% sampling for network flows
+
+# Buffer Settings
+buffer_size: 10000
+max_batch_size: 1000
+
+# Resource Limits (to prevent agent from impacting host)
+max_cpu_percent: 5.0
+max_memory_mb: 256
+
+# TLS Settings
+tls_enabled: true
+tls_skip_verify: false
+# tls_cert_path: "/etc/devopsmate/cert.pem"
+# tls_key_path: "/etc/devopsmate/key.pem"
+# tls_ca_path: "/etc/devopsmate/ca.pem"
+
+# Global Tags (added to all telemetry)
+global_tags:
+  environment: "production"
+  datacenter: "us-east-1"
+  team: "platform"
+
+# Host Identification (auto-detected if not set)
+# host_id: "custom-host-id"
+# host_name: "custom-hostname"
