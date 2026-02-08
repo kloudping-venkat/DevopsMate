@@ -118,6 +118,11 @@ class DataExporter:
         payloads: List[Dict[str, Any]],
     ) -> bool:
         """Send data with exponential backoff retry."""
+        # Check if session is initialized
+        if not self._session:
+            logger.warning(f"Session not initialized, skipping {data_type} export")
+            return False
+        
         endpoint_map = {
             "metrics": f"{self.endpoint}/metrics",
             "logs": f"{self.endpoint}/logs",
@@ -127,10 +132,21 @@ class DataExporter:
         
         url = endpoint_map.get(data_type, f"{self.endpoint}/{data_type}")
         
+        # Format payload according to API schema
+        if data_type == "metrics":
+            request_body = {"metrics": payloads}
+        elif data_type == "logs":
+            request_body = {"logs": payloads}
+        elif data_type == "traces":
+            # Traces endpoint expects array directly
+            request_body = payloads
+        else:
+            request_body = payloads
+        
         for attempt in range(self.max_retries):
             try:
                 # Compress payload
-                payload_json = json.dumps(payloads)
+                payload_json = json.dumps(request_body)
                 compressed = gzip.compress(payload_json.encode())
                 
                 async with self._session.post(url, data=compressed) as response:
