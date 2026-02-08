@@ -127,7 +127,7 @@ class DataExporter:
             "metrics": f"{self.endpoint}/metrics",
             "logs": f"{self.endpoint}/logs",
             "traces": f"{self.endpoint}/traces",
-            "topology": f"{self.endpoint}/topology",
+            "topology": f"{self.endpoint.replace('/api/v1/ingest', '/api/v2/topology')}/ingest",
         }
         
         url = endpoint_map.get(data_type, f"{self.endpoint}/{data_type}")

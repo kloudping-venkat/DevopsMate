@@ -353,30 +353,40 @@ class LogCollector:
                 if docker_log_path.exists() and docker_log_path.is_dir():
                     # Check if we have permission to list directory
                     try:
-                        # Test directory access
-                        list(docker_log_path.iterdir())
-                    except PermissionError:
-                        logger.debug(f"Permission denied accessing {docker_log_path}, skipping Docker log collection")
+                        # Test directory access - this will raise PermissionError if we can't access
+                        test_list = list(docker_log_path.iterdir())
+                        if not test_list:
+                            # Directory is empty, nothing to collect
+                            return logs
+                    except (PermissionError, OSError) as e:
+                        # Permission denied or other OS error - skip gracefully
+                        logger.debug(f"Permission denied accessing {docker_log_path}, skipping Docker log collection: {e}")
                         return logs
                     
-                    for container_dir in docker_log_path.iterdir():
-                        if container_dir.is_dir():
-                            log_file = container_dir / f"{container_dir.name}-json.log"
-                            if log_file.exists() and log_file.is_file():
-                                try:
-                                    container_logs = await self._collect_from_file(log_file)
-                                    for log in container_logs:
-                                        log["container_id"] = container_dir.name[:12]
-                                        log["source_type"] = "docker"
-                                    logs.extend(container_logs)
-                                except PermissionError:
-                                    logger.debug(f"Permission denied reading {log_file}, skipping")
-                                    continue
-                                except Exception as e:
-                                    logger.debug(f"Error reading {log_file}: {e}")
-                                    continue
-            except PermissionError:
-                logger.debug(f"Permission denied accessing /var/lib/docker/containers, skipping Docker log collection")
+                    # Now iterate - we know we have permission (or at least tried to check)
+                    try:
+                        for container_dir in docker_log_path.iterdir():
+                            if container_dir.is_dir():
+                                log_file = container_dir / f"{container_dir.name}-json.log"
+                                if log_file.exists() and log_file.is_file():
+                                    try:
+                                        container_logs = await self._collect_from_file(log_file)
+                                        for log in container_logs:
+                                            log["container_id"] = container_dir.name[:12]
+                                            log["source_type"] = "docker"
+                                        logs.extend(container_logs)
+                                    except (PermissionError, OSError) as e:
+                                        logger.debug(f"Permission denied reading {log_file}, skipping: {e}")
+                                        continue
+                                    except Exception as e:
+                                        logger.debug(f"Error reading {log_file}: {e}")
+                                        continue
+                    except (PermissionError, OSError) as e:
+                        # This shouldn't happen since we checked above, but handle it anyway
+                        logger.debug(f"Permission error during iteration: {e}")
+                        return logs
+            except (PermissionError, OSError) as e:
+                logger.debug(f"Permission denied accessing /var/lib/docker/containers, skipping Docker log collection: {e}")
             except Exception as e:
                 logger.debug(f"Error accessing Docker log directory: {e}")
         

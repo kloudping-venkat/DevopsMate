@@ -197,9 +197,18 @@ class UniversalAgent:
             try:
                 await collector.collect()
                 self.stats["metrics_collected"] += collector.last_count
+            except PermissionError as e:
+                # Permission errors are expected and handled gracefully by collectors
+                # Log as debug to avoid noise in error logs
+                logger.debug(f"Collector permission issue (expected): {e}")
             except Exception as e:
-                logger.error(f"Collector error: {e}")
-                self.stats["errors"] += 1
+                # Check if it's a permission-related error
+                error_str = str(e).lower()
+                if "permission denied" in error_str or "errno 13" in error_str:
+                    logger.debug(f"Collector permission issue (expected): {e}")
+                else:
+                    logger.error(f"Collector error: {e}")
+                    self.stats["errors"] += 1
             
             await asyncio.sleep(collector.interval)
     
