@@ -93,6 +93,12 @@ class DataExporter:
     
     async def _flush_all(self):
         """Flush all data types."""
+        # First, try to recover and send any spilled data from disk
+        recovered = await self.buffer.recover_from_disk()
+        if recovered > 0:
+            logger.info(f"Recovered {recovered} items from disk, attempting to send...")
+        
+        # Then flush current in-memory buffers
         for data_type in ["metrics", "logs", "traces"]:
             await self._flush_type(data_type)
     
@@ -170,8 +176,11 @@ class DataExporter:
                         await asyncio.sleep(2 ** attempt)
                     
                     else:
-                        # Client error, don't retry
-                        logger.error(f"Client error {response.status}: {await response.text()}")
+                        # Client error, log the response for debugging
+                        response_text = await response.text()
+                        logger.error(
+                            f"Client error {response.status} for {data_type}: {response_text[:500]}"
+                        )
                         self._stats["requests_failed"] += 1
                         return False
                         

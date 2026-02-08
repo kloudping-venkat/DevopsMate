@@ -133,13 +133,46 @@ class DataBuffer:
             # Create directory with user permissions (not root)
             self.spill_path.mkdir(parents=True, exist_ok=True, mode=0o755)
             
-            # Check disk space
-            current_size = sum(
-                f.stat().st_size for f in self.spill_path.glob("*.gz")
-            )
+            # Check disk space and cleanup old files if needed
+            spill_files = list(self.spill_path.glob("*.json.gz"))
+            current_size = sum(f.stat().st_size for f in spill_files)
+            
+            # If directory is full, delete oldest files to make space
             if current_size >= self.max_spill_size:
-                logger.warning("Spill directory full, dropping data")
-                return False
+                logger.warning(f"Spill directory full ({current_size / 1024 / 1024:.1f}MB), cleaning up old files...")
+                
+                # Sort by modification time (oldest first)
+                spill_files.sort(key=lambda f: f.stat().st_mtime)
+                
+                # Delete oldest files until we have space
+                deleted_size = 0
+                deleted_count = 0
+                for filepath in spill_files:
+                    if current_size - deleted_size < self.max_spill_size * 0.8:  # Keep 20% free
+                        break
+                    try:
+                        file_size = filepath.stat().st_size
+                        filepath.unlink()
+                        deleted_size += file_size
+                        deleted_count += 1
+                    except Exception as e:
+                        logger.warning(f"Failed to delete old spill file {filepath}: {e}")
+                
+                if deleted_count > 0:
+                    logger.info(f"Deleted {deleted_count} old spill files ({deleted_size / 1024 / 1024:.1f}MB)")
+                
+                # Recalculate size after cleanup
+                current_size = sum(f.stat().st_size for f in self.spill_path.glob("*.json.gz"))
+                
+                # If still full after cleanup, we have a problem - data is not being sent
+                if current_size >= self.max_spill_size:
+                    logger.error(
+                        f"Spill directory still full after cleanup. "
+                        f"This indicates data is not being sent to the API. "
+                        f"Check exporter status and API connectivity. "
+                        f"Dropping data to prevent disk fill."
+                    )
+                    return False
             
             # Write to disk
             filename = f"{data_type}_{datetime.utcnow().timestamp()}.json.gz"
@@ -147,6 +180,9 @@ class DataBuffer:
             
             buffer = self._buffers[data_type]
             items = [b.payload for b in list(buffer)[:1000]]
+            
+            if not items:
+                return True  # Nothing to spill
             
             with gzip.open(filepath, "wt") as f:
                 json.dump(items, f)
@@ -157,7 +193,7 @@ class DataBuffer:
                     buffer.popleft()
             
             self._stats["spill_count"] += 1
-            logger.info(f"Spilled {len(items)} items to {filepath}")
+            logger.info(f"Spilled {len(items)} {data_type} items to {filepath} ({filepath.stat().st_size / 1024:.1f}KB)")
             return True
             
         except (PermissionError, OSError) as e:
