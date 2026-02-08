@@ -302,20 +302,83 @@ class LogCollector:
         """Collect logs from Docker containers."""
         logs = []
         
-        # Docker logs are typically collected via file paths or Docker API
-        # For now, we rely on file collection from /var/lib/docker/containers
+        # Try Docker API first (recommended approach)
+        try:
+            import docker
+            client = docker.from_env()
+            
+            # Get all containers (running and stopped)
+            containers = client.containers.list(all=True)
+            
+            for container in containers:
+                try:
+                    # Get logs from Docker API (last 100 lines)
+                    container_logs_raw = container.logs(
+                        tail=100,
+                        timestamps=True,
+                        since=datetime.utcnow().replace(second=0, microsecond=0).isoformat()
+                    )
+                    
+                    # Parse logs
+                    for line in container_logs_raw.decode('utf-8', errors='ignore').split('\n'):
+                        if line.strip():
+                            log_entry = {
+                                "timestamp": datetime.utcnow().isoformat(),
+                                "message": line,
+                                "level": "info",
+                                "source_type": "docker",
+                                "container_id": container.id[:12],
+                                "container_name": container.name,
+                                "image": container.image.tags[0] if container.image.tags else container.image.id[:12],
+                                "attributes": {
+                                    "container_id": container.id[:12],
+                                    "container_name": container.name,
+                                }
+                            }
+                            logs.append(log_entry)
+                
+                except Exception as e:
+                    logger.debug(f"Failed to get logs from container {container.id[:12]}: {e}")
+                    continue
         
-        docker_log_path = Path("/var/lib/docker/containers")
-        if docker_log_path.exists():
-            for container_dir in docker_log_path.iterdir():
-                if container_dir.is_dir():
-                    log_file = container_dir / f"{container_dir.name}-json.log"
-                    if log_file.exists():
-                        container_logs = await self._collect_from_file(log_file)
-                        for log in container_logs:
-                            log["container_id"] = container_dir.name[:12]
-                            log["source_type"] = "docker"
-                        logs.extend(container_logs)
+        except ImportError:
+            logger.debug("Docker SDK not available, trying file-based collection")
+        except Exception as e:
+            logger.debug(f"Docker API unavailable: {e}, trying file-based collection")
+        
+        # Fallback to file-based collection if Docker API fails
+        if not logs:
+            try:
+                docker_log_path = Path("/var/lib/docker/containers")
+                if docker_log_path.exists() and docker_log_path.is_dir():
+                    # Check if we have permission to list directory
+                    try:
+                        # Test directory access
+                        list(docker_log_path.iterdir())
+                    except PermissionError:
+                        logger.debug(f"Permission denied accessing {docker_log_path}, skipping Docker log collection")
+                        return logs
+                    
+                    for container_dir in docker_log_path.iterdir():
+                        if container_dir.is_dir():
+                            log_file = container_dir / f"{container_dir.name}-json.log"
+                            if log_file.exists() and log_file.is_file():
+                                try:
+                                    container_logs = await self._collect_from_file(log_file)
+                                    for log in container_logs:
+                                        log["container_id"] = container_dir.name[:12]
+                                        log["source_type"] = "docker"
+                                    logs.extend(container_logs)
+                                except PermissionError:
+                                    logger.debug(f"Permission denied reading {log_file}, skipping")
+                                    continue
+                                except Exception as e:
+                                    logger.debug(f"Error reading {log_file}: {e}")
+                                    continue
+            except PermissionError:
+                logger.debug(f"Permission denied accessing /var/lib/docker/containers, skipping Docker log collection")
+            except Exception as e:
+                logger.debug(f"Error accessing Docker log directory: {e}")
         
         return logs
     
