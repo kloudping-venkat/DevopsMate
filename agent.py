@@ -116,7 +116,13 @@ class UniversalAgent:
         
         self.running = True
         
-        # Start discovery
+        # Start exporter first (initializes session) so topology can be sent during discovery
+        exporter_task = asyncio.create_task(self.exporter.start())
+        
+        # Give exporter a moment to initialize session
+        await asyncio.sleep(0.1)
+        
+        # Start discovery (needs exporter session for topology)
         await self._run_discovery()
         
         # Start auto-instrumentation if enabled
@@ -128,9 +134,6 @@ class UniversalAgent:
         for collector in self.collectors:
             task = asyncio.create_task(self._run_collector(collector))
             collector_tasks.append(task)
-        
-        # Start exporter
-        exporter_task = asyncio.create_task(self.exporter.start())
         
         # Start periodic discovery
         discovery_task = asyncio.create_task(self._periodic_discovery())
