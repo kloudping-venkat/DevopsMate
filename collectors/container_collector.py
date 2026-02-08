@@ -114,7 +114,7 @@ class ContainerMetricsCollector:
                     cpu_percent = 0
                 
                 metrics.append({
-                    "name": "container.cpu.usage",
+                    "metric": "container.cpu.usage",
                     "value": cpu_percent,
                     "timestamp": timestamp.isoformat(),
                     "tags": base_tags,
@@ -127,14 +127,14 @@ class ContainerMetricsCollector:
                 
                 metrics.extend([
                     {
-                        "name": "container.memory.usage",
+                        "metric": "container.memory.usage",
                         "value": mem_usage,
                         "timestamp": timestamp.isoformat(),
                         "tags": base_tags,
                         "unit": "bytes",
                     },
                     {
-                        "name": "container.memory.limit",
+                        "metric": "container.memory.limit",
                         "value": mem_limit,
                         "timestamp": timestamp.isoformat(),
                         "tags": base_tags,
@@ -144,7 +144,7 @@ class ContainerMetricsCollector:
                 
                 if mem_limit > 0:
                     metrics.append({
-                        "name": "container.memory.percent",
+                        "metric": "container.memory.percent",
                         "value": (mem_usage / mem_limit) * 100,
                         "timestamp": timestamp.isoformat(),
                         "tags": base_tags,
@@ -158,14 +158,14 @@ class ContainerMetricsCollector:
                     
                     metrics.extend([
                         {
-                            "name": "container.network.rx_bytes",
+                            "metric": "container.network.rx_bytes",
                             "value": network_stats.get("rx_bytes", 0),
                             "timestamp": timestamp.isoformat(),
                             "tags": net_tags,
                             "unit": "bytes",
                         },
                         {
-                            "name": "container.network.tx_bytes",
+                            "metric": "container.network.tx_bytes",
                             "value": network_stats.get("tx_bytes", 0),
                             "timestamp": timestamp.isoformat(),
                             "tags": net_tags,
@@ -179,7 +179,7 @@ class ContainerMetricsCollector:
                     op = io_stat.get("op", "").lower()
                     if op in ["read", "write"]:
                         metrics.append({
-                            "name": f"container.blkio.{op}_bytes",
+                            "metric": f"container.blkio.{op}_bytes",
                             "value": io_stat.get("value", 0),
                             "timestamp": timestamp.isoformat(),
                             "tags": base_tags,
@@ -244,7 +244,7 @@ class ContainerMetricsCollector:
                 stats = self._parse_stat_file(cpu_stat)
                 if "usage_usec" in stats:
                     metrics.append({
-                        "name": "container.cpu.usage_usec",
+                        "metric": "container.cpu.usage_usec",
                         "value": stats["usage_usec"],
                         "timestamp": timestamp.isoformat(),
                         "tags": base_tags,
@@ -255,7 +255,7 @@ class ContainerMetricsCollector:
             if memory_current.exists():
                 mem_usage = int(memory_current.read_text().strip())
                 metrics.append({
-                    "name": "container.memory.usage",
+                    "metric": "container.memory.usage",
                     "value": mem_usage,
                     "timestamp": timestamp.isoformat(),
                     "tags": base_tags,
@@ -267,7 +267,7 @@ class ContainerMetricsCollector:
                 content = memory_max.read_text().strip()
                 if content != "max":
                     metrics.append({
-                        "name": "container.memory.limit",
+                        "metric": "container.memory.limit",
                         "value": int(content),
                         "timestamp": timestamp.isoformat(),
                         "tags": base_tags,
@@ -306,7 +306,7 @@ class ContainerMetricsCollector:
             if cpuacct.exists():
                 usage_ns = int(cpuacct.read_text().strip())
                 metrics.append({
-                    "name": "container.cpu.usage_ns",
+                    "metric": "container.cpu.usage_ns",
                     "value": usage_ns,
                     "timestamp": timestamp.isoformat(),
                     "tags": base_tags,
@@ -318,7 +318,7 @@ class ContainerMetricsCollector:
                 memory_usage = mem_dir / "memory.usage_in_bytes"
                 if memory_usage.exists():
                     metrics.append({
-                        "name": "container.memory.usage",
+                        "metric": "container.memory.usage",
                         "value": int(memory_usage.read_text().strip()),
                         "timestamp": timestamp.isoformat(),
                         "tags": base_tags,

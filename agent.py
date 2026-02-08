@@ -58,9 +58,15 @@ class UniversalAgent:
         self.running = False
         
         # Initialize components
+        # Determine installation directory for buffer spilling (user-writable)
+        import os
+        install_dir = os.getenv("DEVOPSMATE_AGENT_DIR", os.getcwd())
+        buffer_spill_path = os.path.join(install_dir, "buffer")
+        
         self.buffer = DataBuffer(
             max_size=config.buffer_size,
             flush_interval=config.flush_interval,
+            spill_path=buffer_spill_path,
         )
         
         self.exporter = DataExporter(

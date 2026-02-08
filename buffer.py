@@ -37,12 +37,20 @@ class DataBuffer:
         self,
         max_size: int = 10000,
         flush_interval: float = 10.0,
-        spill_path: str = "/var/lib/devopsmate/buffer",
+        spill_path: Optional[str] = None,
         max_spill_size_mb: int = 100,
     ):
         self.max_size = max_size
         self.flush_interval = flush_interval
-        self.spill_path = Path(spill_path)
+        # Use installation directory for spill path (user-writable)
+        # Fallback to /var/lib/devopsmate/buffer if explicitly provided
+        if spill_path:
+            self.spill_path = Path(spill_path)
+        else:
+            # Use user's home directory or current working directory
+            import os
+            base_path = os.getenv("DEVOPSMATE_AGENT_DIR", os.getcwd())
+            self.spill_path = Path(base_path) / "buffer"
         self.max_spill_size = max_spill_size_mb * 1024 * 1024
         
         # In-memory buffers by type
@@ -122,7 +130,8 @@ class DataBuffer:
     async def _spill_to_disk(self, data_type: str) -> bool:
         """Spill buffer to disk when memory is full."""
         try:
-            self.spill_path.mkdir(parents=True, exist_ok=True)
+            # Create directory with user permissions (not root)
+            self.spill_path.mkdir(parents=True, exist_ok=True, mode=0o755)
             
             # Check disk space
             current_size = sum(
@@ -151,6 +160,11 @@ class DataBuffer:
             logger.info(f"Spilled {len(items)} items to {filepath}")
             return True
             
+        except (PermissionError, OSError) as e:
+            # Permission errors are expected if directory is not writable
+            # Log as warning instead of error to reduce noise
+            logger.warning(f"Could not spill to disk (permission issue): {e}")
+            return False
         except Exception as e:
             logger.error(f"Failed to spill to disk: {e}")
             return False

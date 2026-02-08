@@ -81,51 +81,51 @@ class NetworkCollector:
             # Calculate rates if we have previous values
             metrics.extend([
                 {
-                    "name": "network.interface.bytes_sent_total",
+                    "metric": "network.interface.bytes_sent_total",
                     "value": counters.bytes_sent,
                     "timestamp": timestamp.isoformat(),
                     "tags": tags,
                     "unit": "bytes",
                 },
                 {
-                    "name": "network.interface.bytes_recv_total",
+                    "metric": "network.interface.bytes_recv_total",
                     "value": counters.bytes_recv,
                     "timestamp": timestamp.isoformat(),
                     "tags": tags,
                     "unit": "bytes",
                 },
                 {
-                    "name": "network.interface.packets_sent_total",
+                    "metric": "network.interface.packets_sent_total",
                     "value": counters.packets_sent,
                     "timestamp": timestamp.isoformat(),
                     "tags": tags,
                 },
                 {
-                    "name": "network.interface.packets_recv_total",
+                    "metric": "network.interface.packets_recv_total",
                     "value": counters.packets_recv,
                     "timestamp": timestamp.isoformat(),
                     "tags": tags,
                 },
                 {
-                    "name": "network.interface.errors_in",
+                    "metric": "network.interface.errors_in",
                     "value": counters.errin,
                     "timestamp": timestamp.isoformat(),
                     "tags": tags,
                 },
                 {
-                    "name": "network.interface.errors_out",
+                    "metric": "network.interface.errors_out",
                     "value": counters.errout,
                     "timestamp": timestamp.isoformat(),
                     "tags": tags,
                 },
                 {
-                    "name": "network.interface.drops_in",
+                    "metric": "network.interface.drops_in",
                     "value": counters.dropin,
                     "timestamp": timestamp.isoformat(),
                     "tags": tags,
                 },
                 {
-                    "name": "network.interface.drops_out",
+                    "metric": "network.interface.drops_out",
                     "value": counters.dropout,
                     "timestamp": timestamp.isoformat(),
                     "tags": tags,
@@ -185,7 +185,7 @@ class NetworkCollector:
         # Connection state metrics
         for state, count in state_counts.items():
             metrics.append({
-                "name": "network.connections.by_state",
+                "metric": "network.connections.by_state",
                 "value": count,
                 "timestamp": timestamp.isoformat(),
                 "tags": {
@@ -197,7 +197,7 @@ class NetworkCollector:
         # Protocol metrics
         for protocol, count in protocol_counts.items():
             metrics.append({
-                "name": "network.connections.by_protocol",
+                "metric": "network.connections.by_protocol",
                 "value": count,
                 "timestamp": timestamp.isoformat(),
                 "tags": {
@@ -208,7 +208,7 @@ class NetworkCollector:
         
         # Total connections
         metrics.append({
-            "name": "network.connections.total",
+            "metric": "network.connections.total",
             "value": len(connections),
             "timestamp": timestamp.isoformat(),
             "tags": self.config.global_tags,
@@ -250,7 +250,7 @@ class NetworkCollector:
                     
                     for name, value in tcp_metrics.items():
                         metrics.append({
-                            "name": name,
+                            "metric": name,
                             "value": value,
                             "timestamp": timestamp.isoformat(),
                             "tags": self.config.global_tags,
@@ -268,7 +268,7 @@ class NetworkCollector:
                     
                     for name, value in udp_metrics.items():
                         metrics.append({
-                            "name": name,
+                            "metric": name,
                             "value": value,
                             "timestamp": timestamp.isoformat(),
                             "tags": self.config.global_tags,

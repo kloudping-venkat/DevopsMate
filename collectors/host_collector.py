@@ -93,7 +93,7 @@ class HostMetricsCollector:
         # Overall CPU
         cpu_percent = psutil.cpu_percent(interval=None)
         metrics.append({
-            "name": "system.cpu.usage",
+            "metric": "system.cpu.usage",  # API expects "metric" not "name"
             "value": cpu_percent,
             "timestamp": timestamp.isoformat(),
             "tags": {**base_tags, "type": "total"},
@@ -104,7 +104,7 @@ class HostMetricsCollector:
         per_cpu = psutil.cpu_percent(interval=None, percpu=True)
         for i, cpu in enumerate(per_cpu):
             metrics.append({
-                "name": "system.cpu.usage",
+                "metric": "system.cpu.usage",
                 "value": cpu,
                 "timestamp": timestamp.isoformat(),
                 "tags": {**base_tags, "cpu": str(i)},
@@ -117,7 +117,7 @@ class HostMetricsCollector:
             value = getattr(cpu_times, field, None)
             if value is not None:
                 metrics.append({
-                    "name": f"system.cpu.{field}",
+                    "metric": f"system.cpu.{field}",
                     "value": value,
                     "timestamp": timestamp.isoformat(),
                     "tags": base_tags,
@@ -129,7 +129,7 @@ class HostMetricsCollector:
             load = psutil.getloadavg()
             for i, period in enumerate(["1m", "5m", "15m"]):
                 metrics.append({
-                    "name": "system.load.average",
+                    "metric": "system.load.average",
                     "value": load[i],
                     "timestamp": timestamp.isoformat(),
                     "tags": {**base_tags, "period": period},
@@ -151,28 +151,28 @@ class HostMetricsCollector:
         mem = psutil.virtual_memory()
         metrics.extend([
             {
-                "name": "system.memory.total",
+                "metric": "system.memory.total",
                 "value": mem.total,
                 "timestamp": timestamp.isoformat(),
                 "tags": base_tags,
                 "unit": "bytes",
             },
             {
-                "name": "system.memory.used",
+                "metric": "system.memory.used",
                 "value": mem.used,
                 "timestamp": timestamp.isoformat(),
                 "tags": base_tags,
                 "unit": "bytes",
             },
             {
-                "name": "system.memory.available",
+                "metric": "system.memory.available",
                 "value": mem.available,
                 "timestamp": timestamp.isoformat(),
                 "tags": base_tags,
                 "unit": "bytes",
             },
             {
-                "name": "system.memory.usage",
+                "metric": "system.memory.usage",
                 "value": mem.percent,
                 "timestamp": timestamp.isoformat(),
                 "tags": base_tags,
@@ -184,21 +184,21 @@ class HostMetricsCollector:
         swap = psutil.swap_memory()
         metrics.extend([
             {
-                "name": "system.swap.total",
+                "metric": "system.swap.total",
                 "value": swap.total,
                 "timestamp": timestamp.isoformat(),
                 "tags": base_tags,
                 "unit": "bytes",
             },
             {
-                "name": "system.swap.used",
+                "metric": "system.swap.used",
                 "value": swap.used,
                 "timestamp": timestamp.isoformat(),
                 "tags": base_tags,
                 "unit": "bytes",
             },
             {
-                "name": "system.swap.usage",
+                "metric": "system.swap.usage",
                 "value": swap.percent,
                 "timestamp": timestamp.isoformat(),
                 "tags": base_tags,
@@ -229,28 +229,28 @@ class HostMetricsCollector:
                 
                 metrics.extend([
                     {
-                        "name": "system.disk.total",
+                        "metric": "system.disk.total",
                         "value": usage.total,
                         "timestamp": timestamp.isoformat(),
                         "tags": tags,
                         "unit": "bytes",
                     },
                     {
-                        "name": "system.disk.used",
+                        "metric": "system.disk.used",
                         "value": usage.used,
                         "timestamp": timestamp.isoformat(),
                         "tags": tags,
                         "unit": "bytes",
                     },
                     {
-                        "name": "system.disk.free",
+                        "metric": "system.disk.free",
                         "value": usage.free,
                         "timestamp": timestamp.isoformat(),
                         "tags": tags,
                         "unit": "bytes",
                     },
                     {
-                        "name": "system.disk.usage",
+                        "metric": "system.disk.usage",
                         "value": usage.percent,
                         "timestamp": timestamp.isoformat(),
                         "tags": tags,
@@ -270,27 +270,27 @@ class HostMetricsCollector:
                 
                 metrics.extend([
                     {
-                        "name": "system.disk.read_bytes",
+                        "metric": "system.disk.read_bytes",
                         "value": counters.read_bytes,
                         "timestamp": timestamp.isoformat(),
                         "tags": tags,
                         "unit": "bytes",
                     },
                     {
-                        "name": "system.disk.write_bytes",
+                        "metric": "system.disk.write_bytes",
                         "value": counters.write_bytes,
                         "timestamp": timestamp.isoformat(),
                         "tags": tags,
                         "unit": "bytes",
                     },
                     {
-                        "name": "system.disk.read_count",
+                        "metric": "system.disk.read_count",
                         "value": counters.read_count,
                         "timestamp": timestamp.isoformat(),
                         "tags": tags,
                     },
                     {
-                        "name": "system.disk.write_count",
+                        "metric": "system.disk.write_count",
                         "value": counters.write_count,
                         "timestamp": timestamp.isoformat(),
                         "tags": tags,
@@ -317,51 +317,51 @@ class HostMetricsCollector:
             
             metrics.extend([
                 {
-                    "name": "system.network.bytes_sent",
+                    "metric": "system.network.bytes_sent",
                     "value": counters.bytes_sent,
                     "timestamp": timestamp.isoformat(),
                     "tags": tags,
                     "unit": "bytes",
                 },
                 {
-                    "name": "system.network.bytes_recv",
+                    "metric": "system.network.bytes_recv",
                     "value": counters.bytes_recv,
                     "timestamp": timestamp.isoformat(),
                     "tags": tags,
                     "unit": "bytes",
                 },
                 {
-                    "name": "system.network.packets_sent",
+                    "metric": "system.network.packets_sent",
                     "value": counters.packets_sent,
                     "timestamp": timestamp.isoformat(),
                     "tags": tags,
                 },
                 {
-                    "name": "system.network.packets_recv",
+                    "metric": "system.network.packets_recv",
                     "value": counters.packets_recv,
                     "timestamp": timestamp.isoformat(),
                     "tags": tags,
                 },
                 {
-                    "name": "system.network.errors_in",
+                    "metric": "system.network.errors_in",
                     "value": counters.errin,
                     "timestamp": timestamp.isoformat(),
                     "tags": tags,
                 },
                 {
-                    "name": "system.network.errors_out",
+                    "metric": "system.network.errors_out",
                     "value": counters.errout,
                     "timestamp": timestamp.isoformat(),
                     "tags": tags,
                 },
                 {
-                    "name": "system.network.drops_in",
+                    "metric": "system.network.drops_in",
                     "value": counters.dropin,
                     "timestamp": timestamp.isoformat(),
                     "tags": tags,
                 },
                 {
-                    "name": "system.network.drops_out",
+                    "metric": "system.network.drops_out",
                     "value": counters.dropout,
                     "timestamp": timestamp.isoformat(),
                     "tags": tags,
@@ -382,7 +382,7 @@ class HostMetricsCollector:
         boot_time = psutil.boot_time()
         uptime = datetime.utcnow().timestamp() - boot_time
         metrics.append({
-            "name": "system.uptime",
+            "metric": "system.uptime",
             "value": uptime,
             "timestamp": timestamp.isoformat(),
             "tags": base_tags,
@@ -392,7 +392,7 @@ class HostMetricsCollector:
         # Process counts
         pids = psutil.pids()
         metrics.append({
-            "name": "system.processes.count",
+            "metric": "system.processes.count",
             "value": len(pids),
             "timestamp": timestamp.isoformat(),
             "tags": base_tags,
@@ -403,7 +403,7 @@ class HostMetricsCollector:
             import resource
             soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
             metrics.append({
-                "name": "system.fd.limit",
+                "metric": "system.fd.limit",
                 "value": soft,
                 "timestamp": timestamp.isoformat(),
                 "tags": base_tags,
