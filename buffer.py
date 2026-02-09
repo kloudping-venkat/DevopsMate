@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import shutil
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -39,9 +40,14 @@ class DataBuffer:
         flush_interval: float = 10.0,
         spill_path: Optional[str] = None,
         max_spill_size_mb: int = 100,
+        max_disk_ratio: float = 0.95,  # Don't use more than 95% of disk
+        flush_to_disk_mem_ratio: float = 0.5,  # Flush 50% of buffer when full
     ):
         self.max_size = max_size
         self.flush_interval = flush_interval
+        self.max_disk_ratio = max_disk_ratio
+        self.flush_to_disk_mem_ratio = flush_to_disk_mem_ratio
+        
         # Use installation directory for spill path (user-writable)
         # Fallback to /var/lib/devopsmate/buffer if explicitly provided
         if spill_path:
@@ -127,19 +133,48 @@ class DataBuffer:
                     if buffer is not None:
                         buffer.appendleft(item)
     
+    def _compute_available_space(self, current_size: int) -> int:
+        """Compute available disk space considering max_disk_ratio."""
+        try:
+            total, used, free = shutil.disk_usage(self.spill_path)
+            disk_reserved = int(total * (1 - self.max_disk_ratio))
+            available = free - disk_reserved
+            return min(self.max_spill_size, current_size + available)
+        except Exception as e:
+            logger.warning(f"Could not compute disk space: {e}, using max_spill_size")
+            return self.max_spill_size
+    
     async def _spill_to_disk(self, data_type: str) -> bool:
-        """Spill buffer to disk when memory is full."""
+        """Spill buffer to disk when memory is full (Datadog-style LIFO)."""
         try:
             # Create directory with user permissions (not root)
             self.spill_path.mkdir(parents=True, exist_ok=True, mode=0o755)
             
             # Check disk space and cleanup old files if needed
             spill_files = list(self.spill_path.glob("*.json.gz"))
-            current_size = sum(f.stat().st_size for f in spill_files)
+            current_size = sum(f.stat().st_size for f in spill_files) if spill_files else 0
             
-            # If directory is full, delete oldest files to make space
-            if current_size >= self.max_spill_size:
-                logger.warning(f"Spill directory full ({current_size / 1024 / 1024:.1f}MB), cleaning up old files...")
+            # Calculate how much to spill (50% of buffer by default)
+            buffer = self._buffers[data_type]
+            items_to_spill = int(len(buffer) * self.flush_to_disk_mem_ratio)
+            items_to_spill = min(items_to_spill, 1000)  # Max 1000 items per file
+            
+            if items_to_spill == 0:
+                return True  # Nothing to spill
+            
+            # Estimate size (rough estimate: ~100 bytes per item compressed)
+            estimated_size = items_to_spill * 100
+            
+            # Check available space
+            available_space = self._compute_available_space(current_size)
+            
+            # If we need more space, delete oldest files
+            if current_size + estimated_size > available_space:
+                logger.warning(
+                    f"Spill directory approaching limit "
+                    f"({current_size / 1024 / 1024:.1f}MB/{available_space / 1024 / 1024:.1f}MB), "
+                    f"cleaning up old files..."
+                )
                 
                 # Sort by modification time (oldest first)
                 spill_files.sort(key=lambda f: f.stat().st_mtime)
@@ -148,38 +183,49 @@ class DataBuffer:
                 deleted_size = 0
                 deleted_count = 0
                 for filepath in spill_files:
-                    if current_size - deleted_size < self.max_spill_size * 0.8:  # Keep 20% free
+                    if current_size - deleted_size + estimated_size <= available_space * 0.8:
                         break
                     try:
                         file_size = filepath.stat().st_size
                         filepath.unlink()
                         deleted_size += file_size
                         deleted_count += 1
+                        self._stats["drop_count"] += 1  # Count as dropped
                     except Exception as e:
                         logger.warning(f"Failed to delete old spill file {filepath}: {e}")
                 
                 if deleted_count > 0:
-                    logger.info(f"Deleted {deleted_count} old spill files ({deleted_size / 1024 / 1024:.1f}MB)")
+                    logger.info(
+                        f"Deleted {deleted_count} old spill files "
+                        f"({deleted_size / 1024 / 1024:.1f}MB) to make room"
+                    )
                 
                 # Recalculate size after cleanup
                 current_size = sum(f.stat().st_size for f in self.spill_path.glob("*.json.gz"))
-                
-                # If still full after cleanup, we have a problem - data is not being sent
-                if current_size >= self.max_spill_size:
-                    logger.error(
-                        f"Spill directory still full after cleanup. "
-                        f"This indicates data is not being sent to the API. "
-                        f"Check exporter status and API connectivity. "
-                        f"Dropping data to prevent disk fill."
-                    )
-                    return False
             
-            # Write to disk
-            filename = f"{data_type}_{datetime.utcnow().timestamp()}.json.gz"
+            # Check again if we still have space
+            if current_size + estimated_size > available_space:
+                logger.error(
+                    f"Spill directory still full after cleanup "
+                    f"({current_size / 1024 / 1024:.1f}MB). "
+                    f"This indicates data is not being sent to the API. "
+                    f"Check exporter status and API connectivity. "
+                    f"Dropping data to prevent disk fill."
+                )
+                return False
+            
+            # Write to disk with timestamp for LIFO ordering
+            # Format: data_type_YYYY_MM_DD__HH_MM_SS_timestamp.json.gz
+            timestamp = datetime.utcnow()
+            filename = (
+                f"{data_type}_"
+                f"{timestamp.strftime('%Y_%m_%d__%H_%M_%S')}_"
+                f"{timestamp.timestamp()}.json.gz"
+            )
             filepath = self.spill_path / filename
             
-            buffer = self._buffers[data_type]
-            items = [b.payload for b in list(buffer)[:1000]]
+            # Get items to spill (oldest first, so newest stay in memory)
+            items = [b.payload for b in list(buffer)[:items_to_spill]]
             
             if not items:
                 return True  # Nothing to spill
@@ -193,7 +239,11 @@ class DataBuffer:
                     buffer.popleft()
             
             self._stats["spill_count"] += 1
-            logger.info(f"Spilled {len(items)} {data_type} items to {filepath} ({filepath.stat().st_size / 1024:.1f}KB)")
+            actual_size = filepath.stat().st_size
+            logger.info(
+                f"Spilled {len(items)} {data_type} items to {filepath.name} "
+                f"({actual_size / 1024:.1f}KB)"
+            )
             return True
             
         except (PermissionError, OSError) as e:
@@ -205,30 +255,74 @@ class DataBuffer:
             logger.error(f"Failed to spill to disk: {e}")
             return False
     
-    async def recover_from_disk(self) -> int:
-        """Recover spilled data from disk."""
+    async def recover_from_disk(self, max_files: int = 10) -> int:
+        """
+        Recover spilled data from disk (LIFO - newest first, like Datadog).
+        
+        Args:
+            max_files: Maximum number of files to recover in one call
+                      (prevents memory spikes when API is down)
+        
+        Returns:
+            Number of items recovered
+        """
         if not self.spill_path.exists():
             return 0
         
+        spill_files = sorted(
+            self.spill_path.glob("*.json.gz"),
+            key=lambda f: f.stat().st_mtime,
+            reverse=True  # Newest first (LIFO)
+        )
+        
+        if not spill_files:
+            return 0
+        
         recovered = 0
-        for filepath in sorted(self.spill_path.glob("*.json.gz")):
+        files_processed = 0
+        
+        # Process files in reverse order (newest first) - LIFO like Datadog
+        for filepath in spill_files[:max_files]:
             try:
-                data_type = filepath.stem.split("_")[0]
+                # Extract data type from filename (format: data_type_YYYY_MM_DD__...)
+                parts = filepath.stem.split("_")
+                data_type = parts[0] if parts else "metrics"
                 
                 with gzip.open(filepath, "rt") as f:
                     items = json.load(f)
                 
+                # Add items back to buffer
                 for item in items:
-                    await self.add(data_type, item)
-                    recovered += 1
+                    if await self.add(data_type, item):
+                        recovered += 1
+                    else:
+                        # Buffer is full, stop recovering
+                        logger.warning(
+                            f"Buffer full, stopping recovery. "
+                            f"Recovered {recovered} items from {files_processed + 1} files. "
+                            f"Remaining files: {len(spill_files) - files_processed - 1}"
+                        )
+                        # Don't delete this file, we'll try again later
+                        return recovered
                 
-                # Delete recovered file
+                # Delete recovered file only after successful recovery
                 filepath.unlink()
+                files_processed += 1
                 
             except Exception as e:
                 logger.error(f"Failed to recover {filepath}: {e}")
+                # Try to delete corrupted file
+                try:
+                    filepath.unlink()
+                except Exception:
+                    pass
         
-        logger.info(f"Recovered {recovered} items from disk")
+        if recovered > 0:
+            logger.info(
+                f"Recovered {recovered} items from {files_processed} files "
+                f"(remaining: {len(spill_files) - files_processed})"
+            )
+        
         return recovered
     
     def get_stats(self) -> Dict[str, Any]:
